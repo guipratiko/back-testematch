@@ -9,6 +9,13 @@ const router = express.Router();
 // POST /api/webhook/n8n - Receber resultado da análise do n8n
 router.post('/n8n', validateN8nWebhook, async (req, res) => {
   try {
+    console.log('\n🔔 ========== WEBHOOK N8N RECEBIDO ==========');
+    console.log('📅 Timestamp:', new Date().toISOString());
+    console.log('📦 Body completo:', JSON.stringify(req.body, null, 2));
+    console.log('🌐 IP:', req.ip);
+    console.log('🔗 Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('==========================================\n');
+
     const { 
       analysisId, 
       status, 
@@ -100,70 +107,143 @@ router.post('/n8n', validateN8nWebhook, async (req, res) => {
 // POST /api/webhook/appmax - Receber confirmação de pagamento do AppMax
 router.post('/appmax', validateAppMaxWebhook, async (req, res) => {
   try {
+    console.log('\n💰 ========== WEBHOOK APPMAX RECEBIDO ==========');
+    console.log('📅 Timestamp:', new Date().toISOString());
+    console.log('📦 Body completo:', JSON.stringify(req.body, null, 2));
+    console.log('🌐 IP:', req.ip);
+    console.log('🔗 Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('===============================================\n');
+
     const { 
       transactionId, 
       status, 
       amount, 
-      userId, 
-      plan, 
+      name,
+      email,
+      cpf,
+      phone,
+      plan,
       credits,
-      metadata = {} 
+      WEBHOOK_SECRET
     } = req.body;
 
-    // Buscar usuário
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
-        error: 'Usuário não encontrado'
+    // Verificar secret do webhook
+    if (WEBHOOK_SECRET !== process.env.APPMAX_WEBHOOK_SECRET) {
+      return res.status(403).json({
+        error: 'Secret inválido'
       });
     }
 
+    // Normalizar status (português -> inglês)
+    const statusMap = {
+      'aprovado': 'approved',
+      'autorizado': 'approved',
+      'pendente': 'pending',
+      'cancelado': 'cancelled',
+      'reembolsado': 'refunded'
+    };
+    const normalizedStatus = statusMap[status] || status;
+
+    // Buscar usuário por CPF
+    let user = await User.findOne({ cpf });
+
+    if (!user && normalizedStatus === 'approved') {
+      // Criar pré-cadastro se não existir
+      // Usar email do payload ou gerar temporário
+      const userEmail = email || `user_${cpf}@testematch.temp`;
+      
+      user = new User({
+        name,
+        email: userEmail,
+        cpf,
+        phone,
+        credits: 0,
+        plan: plan || 'free',
+        accountStatus: 'pending', // SEMPRE pending - usuário precisa configurar senha
+        password: Math.random().toString(36).slice(-8) // senha temporária
+      });
+
+      await user.save();
+    }
+
+    if (!user) {
+      return res.status(404).json({
+        error: 'Usuário não encontrado e status não é aprovado'
+      });
+    }
+
+    // Verificar se já existe transação com este ID
     let creditTransaction = await CreditTransaction.findOne({ 
       paymentId: transactionId 
     });
 
     if (!creditTransaction) {
-      // Criar nova transação se não existir
+      // Criar nova transação
       creditTransaction = new CreditTransaction({
-        user: userId,
+        user: user._id,
         type: 'purchase',
-        amount: credits || 0,
-        description: `Compra de ${plan} - ${transactionId}`,
-        plan,
+        amount: parseInt(credits) || 0,
+        description: `Compra de ${credits} créditos - ${transactionId}`,
         paymentId: transactionId,
         status: 'pending',
-        metadata
+        metadata: {
+          originalAmount: amount,
+          originalStatus: status
+        }
       });
     }
 
     // Atualizar status da transação
-    creditTransaction.status = status;
-
-    if (status === 'approved') {
+    if (normalizedStatus === 'approved') {
       // Adicionar créditos ao usuário
-      await User.findByIdAndUpdate(userId, {
-        $inc: { credits: credits || 0 },
-        $set: { plan: plan || user.plan }
+      await User.findByIdAndUpdate(user._id, {
+        $inc: { credits: parseInt(credits) || 0 }
       });
 
-      creditTransaction.amount = credits || 0;
+      creditTransaction.amount = parseInt(credits) || 0;
       creditTransaction.status = 'completed';
-    } else if (status === 'cancelled' || status === 'refunded') {
+    } else if (normalizedStatus === 'cancelled' || normalizedStatus === 'refunded') {
       creditTransaction.status = 'failed';
+    } else {
+      creditTransaction.status = normalizedStatus;
     }
 
     await creditTransaction.save();
 
-    res.json({
+    const response = {
       message: 'Webhook AppMax processado com sucesso',
       transactionId,
-      status: creditTransaction.status
-    });
+      userId: user._id,
+      status: creditTransaction.status,
+      setupPasswordUrl: user.accountStatus === 'pending' ? `https://testematch.com/setup-password/${user._id}` : null
+    };
+
+    console.log('\n✅ ========== WEBHOOK PROCESSADO COM SUCESSO ==========');
+    console.log('👤 Usuário:', user.name);
+    console.log('🆔 User ID:', user._id);
+    console.log('📧 Email:', user.email);
+    console.log('📱 Telefone:', user.phone);
+    console.log('🎫 CPF:', user.cpf);
+    console.log('📦 Plan:', user.plan);
+    console.log('🔄 Account Status:', user.accountStatus);
+    console.log('💳 Créditos adicionados:', parseInt(credits));
+    console.log('💰 Total de créditos agora:', await User.findById(user._id).then(u => u.credits));
+    console.log('📊 Status da transação:', creditTransaction.status);
+    console.log('🔗 Setup URL:', response.setupPasswordUrl);
+    console.log('====================================================\n');
+
+    res.json(response);
 
   } catch (error) {
-    console.error('Erro no webhook AppMax:', error);
+    console.log('\n❌ ========== ERRO NO WEBHOOK APPMAX ==========');
+    console.log('⚠️ Erro:', error.message);
+    console.log('📦 Stack:', error.stack);
+    console.log('📦 Body recebido:', JSON.stringify(req.body, null, 2));
+    console.log('=============================================\n');
+    
     res.status(500).json({
-      error: 'Erro interno do servidor'
+      error: 'Erro interno do servidor',
+      details: error.message
     });
   }
 });

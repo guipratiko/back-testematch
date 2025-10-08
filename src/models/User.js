@@ -15,12 +15,19 @@ const userSchema = new mongoose.Schema({
     unique: true,
     lowercase: true,
     trim: true,
-    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Email inválido']
+    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,10})+$/, 'Email inválido']
   },
   password: {
     type: String,
-    required: [true, 'Senha é obrigatória'],
+    required: function() {
+      return this.accountStatus === 'active';
+    },
     minlength: [6, 'Senha deve ter pelo menos 6 caracteres']
+  },
+  accountStatus: {
+    type: String,
+    enum: ['pending', 'active', 'suspended'],
+    default: 'active'
   },
   phone: {
     type: String,

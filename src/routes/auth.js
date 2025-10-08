@@ -90,10 +90,19 @@ router.post('/login', validateLogin, async (req, res) => {
       });
     }
 
-    // Verificar se conta está ativa
+    // Verificar se conta está suspensa
     if (!user.isActive) {
       return res.status(401).json({
         error: 'Conta desativada'
+      });
+    }
+
+    // Verificar se precisa configurar senha
+    if (user.accountStatus === 'pending') {
+      return res.status(403).json({
+        error: 'Conta pendente de ativação',
+        requireSetup: true,
+        setupUrl: `/setup-password/${user._id}`
       });
     }
 
@@ -201,6 +210,130 @@ router.post('/refresh', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Erro ao renovar token:', error);
+    res.status(500).json({
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// GET /api/auth/setup-password/:userId - Verificar se usuário precisa configurar senha
+router.get('/setup-password/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId).select('name email cpf phone accountStatus plan credits');
+    
+    if (!user) {
+      return res.status(404).json({
+        error: 'Usuário não encontrado'
+      });
+    }
+
+    if (user.accountStatus !== 'pending') {
+      return res.status(400).json({
+        error: 'Conta já está ativa',
+        redirect: '/login'
+      });
+    }
+
+    console.log('\n🔍 ========== GET SETUP PASSWORD ==========');
+    console.log('🆔 User ID:', userId);
+    console.log('👤 Nome:', user.name);
+    console.log('📧 Email:', user.email);
+    console.log('💳 Créditos:', user.credits);
+    console.log('📦 Plan:', user.plan);
+    console.log('==========================================\n');
+
+    const response = {
+      user: {
+        name: user.name,
+        email: user.email.includes('@testematch.temp') ? '' : user.email,
+        cpf: user.cpf,
+        phone: user.phone,
+        plan: user.plan,
+        credits: user.credits,
+        needsEmail: user.email.includes('@testematch.temp')
+      }
+    };
+
+    res.json(response);
+
+  } catch (error) {
+    console.error('Erro ao verificar setup de senha:', error);
+    res.status(500).json({
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// POST /api/auth/setup-password/:userId - Configurar senha e email
+router.post('/setup-password/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { email, password } = req.body;
+
+    // Validações básicas
+    if (!password || password.length < 6) {
+      return res.status(400).json({
+        error: 'Senha deve ter pelo menos 6 caracteres'
+      });
+    }
+
+    const user = await User.findById(userId);
+    
+    if (!user) {
+      return res.status(404).json({
+        error: 'Usuário não encontrado'
+      });
+    }
+
+    if (user.accountStatus !== 'pending') {
+      return res.status(400).json({
+        error: 'Conta já está ativa'
+      });
+    }
+
+    // Se precisa de email, validar e atualizar
+    if (user.email.includes('@testematch.temp')) {
+      if (!email) {
+        return res.status(400).json({
+          error: 'Email é obrigatório'
+        });
+      }
+
+      // Verificar se email já existe
+      const existingUser = await User.findOne({ email, _id: { $ne: userId } });
+      if (existingUser) {
+        return res.status(409).json({
+          error: 'Email já cadastrado'
+        });
+      }
+
+      user.email = email.toLowerCase().trim();
+    }
+
+    // Atualizar senha e status
+    user.password = password;
+    user.accountStatus = 'active';
+    await user.save();
+
+    // Gerar token
+    const token = generateToken(user._id);
+
+    res.json({
+      message: 'Senha configurada com sucesso',
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        credits: user.credits,
+        plan: user.plan
+      }
+    });
+
+  } catch (error) {
+    console.error('Erro ao configurar senha:', error);
     res.status(500).json({
       error: 'Erro interno do servidor'
     });

@@ -8,12 +8,31 @@ require('dotenv').config();
 const app = express();
 
 // Confiar em proxies (nginx, cloudflare, etc)
-app.set('trust proxy', true);
+// 1 = confiar apenas no primeiro proxy (mais seguro)
+app.set('trust proxy', 1);
 
 // Middlewares de segurança
 app.use(helmet());
+
+// CORS - permitir múltiplas origens
+const allowedOrigins = [
+  'http://localhost:3000',
+  'http://localhost:3750',
+  'https://testematch.com',
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'https://testematch.com',
+  origin: function (origin, callback) {
+    // Permitir requisições sem origin (como mobile apps ou curl)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
   credentials: true
 }));
 
@@ -27,6 +46,11 @@ const limiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
+  // Validação desabilitada para evitar warnings em desenvolvimento
+  validate: {
+    trustProxy: false,
+    xForwardedForHeader: false
+  }
 });
 app.use('/api/', limiter);
 
@@ -101,6 +125,13 @@ app.use('*', (req, res) => {
 const PORT = process.env.PORT || 4000;
 
 app.listen(PORT, () => {
+  console.log('\n🚀 ========================================');
   console.log(`🚀 Servidor rodando na porta ${PORT}`);
   console.log(`📱 Ambiente: ${process.env.NODE_ENV || 'development'}`);
+  console.log('========================================');
+  console.log('\n📡 Webhooks disponíveis:');
+  console.log(`   🔔 N8N:     POST http://localhost:${PORT}/api/webhook/n8n`);
+  console.log(`   💰 AppMax:  POST http://localhost:${PORT}/api/webhook/appmax`);
+  console.log(`   🧪 Test:    GET  http://localhost:${PORT}/api/webhook/test`);
+  console.log('\n🔊 Aguardando requisições de webhook...\n');
 });

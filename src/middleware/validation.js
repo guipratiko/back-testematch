@@ -162,12 +162,38 @@ const validateAppMaxWebhook = [
     .withMessage('ID da transação é obrigatório'),
   
   body('status')
-    .isIn(['approved', 'pending', 'cancelled', 'refunded'])
+    .isIn(['aprovado', 'autorizado', 'pendente', 'cancelado', 'reembolsado', 'approved', 'pending', 'cancelled', 'refunded'])
     .withMessage('Status deve ser válido'),
   
-  body('amount')
-    .isFloat({ min: 0 })
-    .withMessage('Valor deve ser um número positivo'),
+  body('name')
+    .notEmpty()
+    .withMessage('Nome é obrigatório'),
+  
+  body('cpf')
+    .matches(/^\d{11}$/)
+    .withMessage('CPF deve ter 11 dígitos'),
+  
+  body('phone')
+    .matches(/^\d{10,11}$/)
+    .withMessage('Telefone deve ter 10 ou 11 dígitos'),
+  
+  body('email')
+    .optional()
+    .isEmail()
+    .withMessage('Email inválido'),
+  
+  body('plan')
+    .optional()
+    .isIn(['free', 'basic', 'complete', 'premium'])
+    .withMessage('Plan inválido'),
+  
+  body('credits')
+    .notEmpty()
+    .withMessage('Créditos são obrigatórios'),
+  
+  body('WEBHOOK_SECRET')
+    .notEmpty()
+    .withMessage('Secret do webhook é obrigatório'),
   
   handleValidationErrors
 ];
