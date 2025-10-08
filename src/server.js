@@ -7,10 +7,13 @@ require('dotenv').config();
 
 const app = express();
 
+// Confiar em proxies (nginx, cloudflare, etc)
+app.set('trust proxy', true);
+
 // Middlewares de segurança
 app.use(helmet());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: process.env.FRONTEND_URL || 'https://testematch.com',
   credentials: true
 }));
 
