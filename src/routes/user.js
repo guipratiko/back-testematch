@@ -25,6 +25,10 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
       .limit(5)
       .select('status plan createdAt creditsUsed');
 
+    // Buscar usuário completo para pegar llmResponses
+    const fullUser = await User.findById(req.user._id).select('llmResponses');
+    const totalLLMResponses = fullUser.llmResponses?.length || 0;
+
     res.json({
       user: {
         id: req.user._id,
@@ -38,6 +42,7 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
         totalAnalyses,
         completedAnalyses,
         pendingAnalyses,
+        totalLLMResponses,
         successRate: totalAnalyses > 0 ? Math.round((completedAnalyses / totalAnalyses) * 100) : 0
       },
       recentAnalyses: recentAnalyses.map(analysis => ({
@@ -50,6 +55,31 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Erro ao obter dashboard:', error);
+    res.status(500).json({
+      error: 'Erro interno do servidor'
+    });
+  }
+});
+
+// GET /api/user/llm-responses - Obter respostas LLM do usuário
+router.get('/llm-responses', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id).select('llmResponses');
+    
+    // Transformar array em objetos com metadata
+    const responses = user.llmResponses.map((response, index) => ({
+      id: index,
+      content: response,
+      createdAt: user.updatedAt,
+      index: index
+    }));
+
+    res.json({
+      responses: responses.reverse(), // Mais recentes primeiro
+      total: responses.length
+    });
+  } catch (error) {
+    console.error('Erro ao obter respostas LLM:', error);
     res.status(500).json({
       error: 'Erro interno do servidor'
     });

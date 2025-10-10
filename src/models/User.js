@@ -68,6 +68,10 @@ const userSchema = new mongoose.Schema({
       type: Boolean,
       default: false
     }
+  },
+  llmResponses: {
+    type: [String],
+    default: []
   }
 }, {
   timestamps: true

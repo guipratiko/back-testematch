@@ -236,15 +236,7 @@ router.get('/setup-password/:userId', async (req, res) => {
       });
     }
 
-    console.log('\n🔍 ========== GET SETUP PASSWORD ==========');
-    console.log('🆔 User ID:', userId);
-    console.log('👤 Nome:', user.name);
-    console.log('📧 Email:', user.email);
-    console.log('💳 Créditos:', user.credits);
-    console.log('📦 Plan:', user.plan);
-    console.log('==========================================\n');
-
-    const response = {
+    res.json({
       user: {
         name: user.name,
         email: user.email.includes('@testematch.temp') ? '' : user.email,
@@ -254,9 +246,7 @@ router.get('/setup-password/:userId', async (req, res) => {
         credits: user.credits,
         needsEmail: user.email.includes('@testematch.temp')
       }
-    };
-
-    res.json(response);
+    });
 
   } catch (error) {
     console.error('Erro ao verificar setup de senha:', error);
