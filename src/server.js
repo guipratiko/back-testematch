@@ -19,6 +19,7 @@ const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3750',
   'https://testematch.com',
+  'https://www.testematch.com',
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
